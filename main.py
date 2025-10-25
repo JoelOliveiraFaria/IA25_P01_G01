@@ -4,9 +4,61 @@ from constraint import Problem, AllDifferentConstraint
 # ==========================================
 # Ler ficheiro JSON
 # ==========================================
-with open("BigDados.json", "r", encoding="utf-8") as f:
-    dados = json.load(f)
-    print(dados)
+# with open("BigDados.json", "r", encoding="utf-8") as f:
+#     dados = json.load(f)
+#     print(dados)
+
+
+def lerDados(filename):
+    dados = {"cc" : {}, "olw" : [], "dsd": {}, "tr" : {}, "rr" : {}, "oc" : {}}
+    secao = None
+
+    with open(filename, "r", encoding="utf-8") as file:
+        for linha in file:
+            linha = linha.strip()
+            if not linha or linha.startswith("—"):
+                continue
+
+            if linha.startswith("#"):
+                secao = linha.split()[0][1:]
+                continue
+
+            partes = linha.split()
+
+            match secao:
+                case "cc":
+                    turma, cursos = partes[0], partes[1:]
+                    dados["cc"][turma] = cursos
+                
+                case "olw":
+                    if partes:
+                        dados["olw"].append(partes[0])
+                
+                case "dsd":
+                    docente, cursos = partes[0], partes[1:]
+                    dados["dsd"][docente] = cursos
+
+                case "tr":
+                    docente, restricoes = partes[0], list(map(int, partes[1:]))
+                    dados["tr"][docente] = restricoes
+
+                case "rr":
+                    curso, sala = partes[0], partes[1]
+                    dados["rr"][curso] = sala
+
+                case "oc":
+                    curso, idx = partes[0], int(partes[1])
+                    dados["oc"][curso] = idx
+
+                case _:
+                    pass
+
+    return dados
+
+
+dados = lerDados("ClassTT_01_tiny.txt")
+print("A carregar dados")
+print(dados)
 
 # Inicializar problema CSP
 problem = Problem()
