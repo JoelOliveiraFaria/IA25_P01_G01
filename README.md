@@ -1,4 +1,4 @@
-# 🧠 Projeto 01 – Inteligência Artificial (IA25_P01_G##)
+# 🧠 Projeto 01 – Inteligência Artificial (IA25_P01_G01)
 
 ## 🎯 Introdução
 O objetivo deste projeto é desenvolver um **agente inteligente** capaz de **gerar horários de aulas automaticamente**, respeitando um conjunto de **restrições rígidas (hard constraints)** e **restrições flexíveis (soft constraints)**.
