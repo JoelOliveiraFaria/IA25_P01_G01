@@ -1,5 +1,7 @@
 import json
 from constraint import Problem, AllDifferentConstraint
+from collections import defaultdict
+
 
 # ==========================================
 # Ler ficheiro JSON
@@ -138,13 +140,109 @@ for sala, variaveis in salas.items():
 # ==========================================
 # Obter primeira solução
 # ==========================================
-solucao = problem.getSolution()
+
+# 1) Variáveis na ordem de criação do python-constraint
+variables = list(problem._variables.keys())
+TOTAL_BLOCOS = 20
+MAX_POR_BLOCO = len(dados["cc"])  # 3 no tiny (1 por turma)
+
+# 2) Mapas auxiliares a partir de 'dados'
+def uc_of(var): 
+    return var.rsplit("_", 1)[0]
+
+curso_para_turma = {uc: t for t, cursos in dados["cc"].items() for uc in cursos}
+curso_para_doc   = {uc: d for d, cursos in dados["dsd"].items() for uc in cursos}
+curso_para_sala  = {uc: s for uc, s in dados.get("rr", {}).items()}
+docente_indisp   = {d: set(bls) for d, bls in dados.get("tr", {}).items()}
+
+# 3) Consistência (todas as hard constraints)
+def is_consistent(assign, var, val):
+    uc      = uc_of(var)
+    turma   = curso_para_turma.get(uc)
+    docente = curso_para_doc.get(uc)
+    sala    = curso_para_sala.get(uc)
+
+    # (a) indisponibilidade do docente
+    if docente in docente_indisp and val in docente_indisp[docente]:
+        return False
+
+    # (b) mesma UC: UC_1 != UC_2
+    par = f"{uc}_2" if var.endswith("_1") else f"{uc}_1"
+    if par in assign and assign[par] == val:
+        return False
+
+    # (c) colisões no mesmo bloco: turma / docente / sala
+    total_no_bloco = 0
+    turma_no_bloco = False
+
+    for v_assigned, bloco in assign.items():
+        if bloco != val:
+            continue
+        total_no_bloco += 1
+        uc2 = uc_of(v_assigned)
+
+        # mesma turma nesse bloco?
+        if curso_para_turma.get(uc2) == turma:
+            turma_no_bloco = True
+
+        # mesmo docente nesse bloco?
+        if docente and curso_para_doc.get(uc2) == docente:
+            return False
+
+        # mesma sala fixa nesse bloco?
+        if sala and curso_para_sala.get(uc2) == sala:
+            return False
+
+    if turma_no_bloco:
+        return False  # 1 aula por bloco por turma
+    if total_no_bloco >= MAX_POR_BLOCO:
+        return False  # capacidade global por bloco
+
+    return True
+
+# 4) Cobertura (usar todos os 20 blocos)
+def cobertura_final_ok(assign):
+    return len(set(assign.values())) == TOTAL_BLOCOS
+
+def cobertura_ainda_viavel(assign, num_atribuidas):
+    # poda segura: não continuar se já for impossível cobrir todos os blocos
+    usados = set(assign.values())
+    vazios = TOTAL_BLOCOS - len(usados)
+    restantes = len(variables) - num_atribuidas
+    return restantes >= vazios
+
+# 5) DFS: primeira solução
+def dfs_primeira_solucao():
+    assign = {}
+
+    def bt(i):
+        if i == len(variables):
+            return assign.copy() if cobertura_final_ok(assign) else None
+
+        if not cobertura_ainda_viavel(assign, i):
+            return None
+
+        var = variables[i]
+        for val in blocos:
+            if is_consistent(assign, var, val):
+                assign[var] = val
+                sol = bt(i + 1)
+                if sol is not None:
+                    return sol
+                del assign[var]
+        return None
+
+    return bt(0)
 
 # ==========================================
 # Transformar em JSON final legível
 # ==========================================
-if solucao:
-    print("\nSolução encontrada:")
-    print(json.dumps(solucao, indent=4))
+
+print("\nSolução encontrada (DFS):")
+solution = dfs_primeira_solucao()
+
+if solution is None:
+    print("Nenhuma solução encontrada (DFS).")
 else:
-    print("Nenhuma solução encontrada")
+    for k in sorted(solution):
+        print(f"{k} : {solution[k]}")
