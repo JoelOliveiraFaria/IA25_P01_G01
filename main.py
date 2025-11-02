@@ -1,5 +1,7 @@
 import json
 from constraint import Problem, AllDifferentConstraint
+from collections import deque
+import matplotlib.pyplot as plt
 
 # ==========================================
 # Ler ficheiro JSON
@@ -84,9 +86,52 @@ for sala, variaveis in salas.items():
     problem.addConstraint(AllDifferentConstraint(), variaveis) # Constraint para que não tenha UCs com a mesma sala não tenham o mesmo bloco
 
 
+# ==============================================
+# Visualização do problema
+# ==============================================
+
+def plot_schedule(solution, title="Horário"):
+    # Dias e horas
+    dias = ["Seg", "Ter", "Qua", "Qui", "Sex"]
+    blocos_horas = ["09-11h", "11-13h", "14-16h", "16-18h"]
+
+    # Cria matriz 4x5 (4 blocos por dia × 5 dias)
+    grid = [[[] for _ in range(5)] for _ in range(4)]
+
+    for uc, bloco in solution.items():
+        bloco -= 1
+        dia = bloco // 4          # coluna (x)
+        slot = bloco % 4          # linha (y)
+        grid[slot][dia].append(uc)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.set_title(title, fontsize=14, fontweight="bold")
+
+    ax.set_xticks(range(5))
+    ax.set_xticklabels(dias, fontsize=10)
+
+    ax.set_yticks(range(4))
+    ax.set_yticklabels(blocos_horas, fontsize=10)
+
+    # Desenha o grid e escreve UCs
+    for y in range(4):
+        for x in range(5):
+            rect = plt.Rectangle((x, y), 1, 1, fill=False)
+            ax.add_patch(rect)
+            cell_text = "\n".join(grid[y][x])
+            ax.text(
+                x + 0.5, y + 0.5, cell_text,
+                ha="center", va="center", fontsize=8, wrap=True
+            )
+
+    ax.set_xlim(0, 5)
+    ax.set_ylim(0, 4)
+    ax.invert_yaxis()  # 09h em cima
+    plt.tight_layout()
+    plt.show()
 
 # ==========================================
-# Obter primeira solução
+# Converter Problem() para Variaveis e Restrições
 # ==========================================
 
 variables = problem._variables
@@ -110,33 +155,9 @@ print(constraints)
 print("\nteste cons2")
 print(constraints[0][1]) """                                                        #Constraints (Tipo de constraint, [UCs envolvidas na constraint])
 
-
-
-def dfs_recursive_stack(variables, constraints, stack, index):
-    """
-    variables: dicionário {var_name: dominio}
-    constraints: lista de constraints
-    stack: dicionário {UC: bloco} representando o caminho atual
-    index: índice da próxima variável a explorar
-    """
-    # se todas as variáveis estão atribuídas, retornamos a solução
-    if checkSolution(variables, stack):
-        return stack
-
-    uc = list(variables.keys())[index]
-
-    # pegar a próxima variável que ainda não está no stack
-    blocos = variables[uc]
-    for bloco in blocos:
-        stack[uc] = bloco  # atribuir valor à variável
-        if constraintCheck(stack, constraints): #true continua, false backtrack
-            solution = dfs_recursive_stack(variables, constraints, stack, index+1)
-            if solution is not None:
-                return solution # encontrou solução, desfaz a recursão
-        stack.pop(uc)  # backtrack caso falha a constraintCheck ou não encontrou solução adiante
-            
-    return None  # nenhum valor válido
-
+# ==========================================
+# Funções de verificação
+# ==========================================
 
 def checkSolution(variables, stack):
     # Verifica se todas as variáveis têm valores atribuídos
@@ -164,8 +185,87 @@ def constraintCheck(stack, constraints):
                 return False
     return True
 
+# ==========================================
+# DFS com stack (recursivo)
+# ==========================================
+
+def dfs_recursive_stack(variables, constraints, stack, index):
+    """
+    variables: dicionário {var_name: dominio}
+    constraints: lista de constraints
+    stack: dicionário {UC: bloco} representando o caminho atual
+    index: índice da próxima variável a explorar
+    """
+    # se todas as variáveis estão atribuídas, retornamos a solução
+    if checkSolution(variables, stack):
+        return stack
+
+    uc = list(variables.keys())[index]
+
+    # pegar a próxima variável que ainda não está no stack
+    blocos = variables[uc]
+    for bloco in blocos:
+        stack[uc] = bloco  # atribuir valor à variável
+        if constraintCheck(stack, constraints): #true continua, false backtrack
+            solution = dfs_recursive_stack(variables, constraints, stack, index+1)
+            if solution is not None:
+                return solution # encontrou solução, desfaz a recursão
+        stack.pop(uc)  # backtrack caso falha a constraintCheck ou não encontrou solução adiante
+            
+    return None  # nenhum valor válido
+
 
 solution = dfs_recursive_stack(variables, constraints, {}, 0)
 
-print ("\nSolução encontrada:")
-print(json.dumps(solution, indent=4))
+if solution:
+    print(json.dumps(solution, indent=4))
+    plot_schedule(solution, title="Horário gerado DFS")
+else:
+    print("Nenhuma solução encontrada")
+
+
+
+# ==========================================
+# BFS com fila
+# ==========================================
+
+
+def bfs_level_by_level(variables, constraints):
+    queue = deque()
+    queue.append({})  # stack inicial (vazia)
+
+    variable_keys = list(variables.keys())
+
+    while queue:
+        stack = queue.popleft()   # tira 1 caminho parcial
+
+        # Se a stack já é uma solução completa
+        if checkSolution(variables, stack):
+            return stack  
+
+        # Determinar qual UC atribuir a seguir
+        next_var_index = len(stack)
+        uc = variable_keys[next_var_index]
+
+        # Expandir este ramo com todos os blocos possíveis
+        for bloco in variables[uc]:
+            new_stack = stack.copy()
+            new_stack[uc] = bloco
+
+            # Só colocamos na fila se respeita as restrições
+            if constraintCheck(new_stack, constraints):
+                queue.append(new_stack)
+
+    return None  # sem solução
+
+# ---- Teste BFS ----
+solution_bfs = bfs_level_by_level(variables, constraints)
+if solution_bfs:
+    print(json.dumps(solution_bfs, indent=4))
+    plot_schedule(solution_bfs, title="Horário gerado BFS")
+else:
+    print("Nenhuma solução encontrada")
+
+
+
+
