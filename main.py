@@ -83,16 +83,89 @@ for curso, sala in dados.get("rr", {}).items():
 for sala, variaveis in salas.items():
     problem.addConstraint(AllDifferentConstraint(), variaveis) # Constraint para que não tenha UCs com a mesma sala não tenham o mesmo bloco
 
+
+
 # ==========================================
 # Obter primeira solução
 # ==========================================
-solucao = problem.getSolution()
 
-# ==========================================
-# Transformar em JSON final legível
-# ==========================================
-if solucao:
-    print("\nSolução encontrada:")
-    print(json.dumps(solucao, indent=4))
-else:
-    print("Nenhuma solução encontrada")
+variables = problem._variables
+domain = blocos
+constraints = problem._constraints
+
+timeslot_constraints = {}
+
+for docente, cursos in dados["dsd"].items():
+    indisponiveis = dados["tr"].get(docente, [])
+    for curso in cursos:
+        timeslot_constraints[curso] = indisponiveis
+
+
+""" print("\nteste var\n")                                                          #CONVERÇÃO: Problem() para Variaveis e Restrições
+print(variaveis)
+
+print("\nteste cons")
+print(constraints)
+
+print("\nteste cons2")
+print(constraints[0][1]) """                                                        #Constraints (Tipo de constraint, [UCs envolvidas na constraint])
+
+
+
+def dfs_recursive_stack(variables, constraints, stack, index):
+    """
+    variables: dicionário {var_name: dominio}
+    constraints: lista de constraints
+    stack: dicionário {UC: bloco} representando o caminho atual
+    index: índice da próxima variável a explorar
+    """
+    # se todas as variáveis estão atribuídas, retornamos a solução
+    if checkSolution(variables, stack):
+        return stack
+
+    uc = list(variables.keys())[index]
+
+    # pegar a próxima variável que ainda não está no stack
+    blocos = variables[uc]
+    for bloco in blocos:
+        stack[uc] = bloco  # atribuir valor à variável
+        if constraintCheck(stack, constraints): #true continua, false backtrack
+            solution = dfs_recursive_stack(variables, constraints, stack, index+1)
+            if solution is not None:
+                return solution # encontrou solução, desfaz a recursão
+        stack.pop(uc)  # backtrack caso falha a constraintCheck ou não encontrou solução adiante
+            
+    return None  # nenhum valor válido
+
+
+def checkSolution(variables, stack):
+    # Verifica se todas as variáveis têm valores atribuídos
+    for uc in variables.keys():
+        if uc not in stack.keys():
+            return False
+    return True
+    
+def constraintCheck(stack, constraints):
+    # Verifica se o stack atual satisfaz todas as constraints
+    for constraint, uc_in_constraint in constraints:
+        if isinstance(constraint, AllDifferentConstraint): #Verifica todas as constraints do tipo AllDifferentConstraint, para turmas, professores e salas
+            valores = [] #lista de valores já atribuídos às UCs na constraint
+            for uc in uc_in_constraint: #para cada UC na AllDifferentConstraint
+                if uc in stack: #verifica se a UC está no stack atual
+                    valor = stack[uc] #pega o valor atribuído à UC no stack
+                    if valor in valores: #se o valor já estiver na lista de valores, falha pois um outra UC anterior já tem esse valor
+                        return False
+                    valores.append(valor) #se o valor não estiver na lista, adiciona-o
+
+    #Verifica as restrições de indisponibilidade dos professores
+    for uc, bloco in stack.items():
+            uc_base = uc.split("_")[0]  # pega 'UC11' de 'UC11_1'
+            if bloco in timeslot_constraints.get(uc_base, []):
+                return False
+    return True
+
+
+solution = dfs_recursive_stack(variables, constraints, {}, 0)
+
+print ("\nSolução encontrada:")
+print(json.dumps(solution, indent=4))
