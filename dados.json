@@ -1,19 +1,19 @@
 {
   "head": {
-    "blocks": 8,
+    "blocks": 6,
     "lessons_per_week": 2
   },
   "cc": {
     "t01": ["UC11", "UC12"],
-    "t02": ["UC21"]
+    "t02": ["UC21","UC22"]
   },
   "dsd": {
     "ana": ["UC11", "UC21"],
-    "bruno": ["UC12"]
+    "bruno": ["UC12","UC22"]
   },
   "tr": {
-    "ana": [7, 8],
-    "bruno": [1, 2]
+    "ana": [1, 6],
+    "bruno": [2, 3]
   },
   "rr": {
     "UC12": "Lab01"

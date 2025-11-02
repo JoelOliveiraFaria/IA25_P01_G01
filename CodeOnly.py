@@ -1,6 +1,6 @@
 import json
 from constraint import Problem, AllDifferentConstraint
-from collections import defaultdict
+from collections import deque
 
 
 # ==========================================
@@ -9,6 +9,9 @@ from collections import defaultdict
 # with open("BigDados.json", "r", encoding="utf-8") as f:
 #     dados = json.load(f)
 #     print(dados)
+with open("dados.json", "r", encoding="utf-8") as f:
+    dados = json.load(f)
+    print(dados)
 
 
 def lerDados(filename):
@@ -58,9 +61,9 @@ def lerDados(filename):
     return dados
 
 
-dados = lerDados("ClassTT_01_tiny.txt")
-print("A carregar dados")
-print(dados)
+# dados = lerDados("ClassTT_01_tiny.txt")
+# print("A carregar dados")
+# print(dados)
 
 # Inicializar problema CSP
 problem = Problem()
@@ -138,15 +141,15 @@ for sala, variaveis in salas.items():
     problem.addConstraint(AllDifferentConstraint(), variaveis) # Constraint para que não tenha UCs com a mesma sala não tenham o mesmo bloco
 
 # ==========================================
-# Obter primeira solução
+# Obter solução dfs
 # ==========================================
 
-# 1) Variáveis na ordem de criação do python-constraint
 variables = list(problem._variables.keys())
-TOTAL_BLOCOS = 20
-MAX_POR_BLOCO = len(dados["cc"])  # 3 no tiny (1 por turma)
+#TOTAL_BLOCOS = 20 #usar quando for o tiny.txt
+TOTAL_BLOCOS = dados["head"]["blocks"]
+MAX_POR_BLOCO = len(dados["cc"]) 
 
-# 2) Mapas auxiliares a partir de 'dados'
+#Hash table para verificar restrições mais rápido
 def uc_of(var): 
     return var.rsplit("_", 1)[0]
 
@@ -155,23 +158,23 @@ curso_para_doc   = {uc: d for d, cursos in dados["dsd"].items() for uc in cursos
 curso_para_sala  = {uc: s for uc, s in dados.get("rr", {}).items()}
 docente_indisp   = {d: set(bls) for d, bls in dados.get("tr", {}).items()}
 
-# 3) Consistência (todas as hard constraints)
+#Adicionar valor nas variáveis: assign - lista de UCs e blocos, var - variável, val - valor(bloco)
 def is_consistent(assign, var, val):
     uc      = uc_of(var)
     turma   = curso_para_turma.get(uc)
     docente = curso_para_doc.get(uc)
     sala    = curso_para_sala.get(uc)
 
-    # (a) indisponibilidade do docente
+    #indisponibilidade do docente
     if docente in docente_indisp and val in docente_indisp[docente]:
         return False
 
-    # (b) mesma UC: UC_1 != UC_2
+    #mesma UC: UC_1 != UC_2
     par = f"{uc}_2" if var.endswith("_1") else f"{uc}_1"
     if par in assign and assign[par] == val:
         return False
 
-    # (c) colisões no mesmo bloco: turma / docente / sala
+    #colisões no mesmo bloco: turma / docente / sala
     total_no_bloco = 0
     turma_no_bloco = False
 
@@ -181,43 +184,42 @@ def is_consistent(assign, var, val):
         total_no_bloco += 1
         uc2 = uc_of(v_assigned)
 
-        # mesma turma nesse bloco?
+        #mesma turma nesse bloco?
         if curso_para_turma.get(uc2) == turma:
             turma_no_bloco = True
 
-        # mesmo docente nesse bloco?
+        #mesmo docente nesse bloco?
         if docente and curso_para_doc.get(uc2) == docente:
             return False
 
-        # mesma sala fixa nesse bloco?
+        #mesma sala fixa nesse bloco?
         if sala and curso_para_sala.get(uc2) == sala:
             return False
 
     if turma_no_bloco:
-        return False  # 1 aula por bloco por turma
+        return False  #1 aula por bloco por turma
     if total_no_bloco >= MAX_POR_BLOCO:
-        return False  # capacidade global por bloco
+        return False  #capacidade global por bloco
 
     return True
 
-# 4) Cobertura (usar todos os 20 blocos)
+#Usa os 20 blocos
 def cobertura_final_ok(assign):
     return len(set(assign.values())) == TOTAL_BLOCOS
 
+#Não usa os 20 blocos ter menos aulas que blocos
 def cobertura_ainda_viavel(assign, num_atribuidas):
-    # poda segura: não continuar se já for impossível cobrir todos os blocos
     usados = set(assign.values())
     vazios = TOTAL_BLOCOS - len(usados)
     restantes = len(variables) - num_atribuidas
     return restantes >= vazios
 
-# 5) DFS: primeira solução
-def dfs_primeira_solucao():
+def dfs():
     assign = {}
 
     def bt(i):
         if i == len(variables):
-            return assign.copy() if cobertura_final_ok(assign) else None
+            return assign.copy() if cobertura_final_ok(assign) else None #so aceita se ocupar os 20 blocos
 
         if not cobertura_ainda_viavel(assign, i):
             return None
@@ -231,18 +233,57 @@ def dfs_primeira_solucao():
                     return sol
                 del assign[var]
         return None
-
+    
     return bt(0)
+
+# ==========================================
+# Obter solução bfs
+# ==========================================
+
+def bfs():
+    # estado = (index_da_variavel, atribuicao_dict)
+    fila = deque()
+    fila.append((0, {}))
+
+    while fila:
+        i, assign = fila.popleft()
+
+        # Se já atribuímos todas as variáveis, validar cobertura total
+        if i == len(variables):
+            if cobertura_final_ok(assign):
+                return assign
+            continue
+
+        if not cobertura_ainda_viavel(assign, i):
+            continue
+
+        var = variables[i]
+
+        # Valores testados em ordem fixa 
+        for val in blocos:
+            if is_consistent(assign, var, val):
+                novo = assign.copy()
+                novo[var] = val
+                fila.append((i + 1, novo))
+
+    return None
 
 # ==========================================
 # Transformar em JSON final legível
 # ==========================================
 
 print("\nSolução encontrada (DFS):")
-solution = dfs_primeira_solucao()
-
-if solution is None:
-    print("Nenhuma solução encontrada (DFS).")
+sol_dfs = dfs()
+if sol_dfs is None:
+    print("Nenhuma solução encontrada.")
 else:
-    for k in sorted(solution):
-        print(f"{k} : {solution[k]}")
+    for k in sorted(sol_dfs):
+        print(f"{k} : {sol_dfs[k]}")
+
+print("\nSolução encontrada (BFS):")
+sol_bfs = bfs()
+if sol_bfs is None:
+    print("Nenhuma solução encontrada.")
+else:
+    for k in sorted(sol_bfs):
+        print(f"{k} : {sol_bfs[k]}")
