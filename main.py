@@ -189,7 +189,6 @@ def plot_schedule_by_class(solution, dados):
 # ==========================================
 
 variables = problem._variables
-domain = blocos
 constraints = problem._constraints
 
 timeslot_constraints = {}
